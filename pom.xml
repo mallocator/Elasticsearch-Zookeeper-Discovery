@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<name>ElasticSearch ZooKeeper Conenctor</name>
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>net.pyxzl</groupId>
+	<artifactId>elasticsearch-zookeeper-discovery</artifactId>
+	<packaging>jar</packaging>
+	<description>Zookeeper Discovery for ElasticSearch</description>
+	<inceptionYear>2013</inceptionYear>
+	<version>1.0.0-SNAPSHOT</version>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<version.elasticsearch>0.20.5</version.elasticsearch>
+		<version.apache.zookeeper>3.4.5</version.apache.zookeeper>
+
+		<version.testng>6.8</version.testng>
+		<version.jmockit>0.999.19</version.jmockit>
+		<version.findbugs>2.5.2</version.findbugs>
+		<version.checkstyle>2.9.1</version.checkstyle>
+
+		<version.maven.assembly>2.4</version.maven.assembly>
+		<version.maven.jar>2.4</version.maven.jar>
+		<version.maven.compiler>3.0</version.maven.compiler>
+		<version.maven.surefire>2.12</version.maven.surefire>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.elasticsearch</groupId>
+			<artifactId>elasticsearch</artifactId>
+			<version>${version.elasticsearch}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.zookeeper</groupId>
+			<artifactId>zookeeper</artifactId>
+			<version>${version.apache.zookeeper}</version>
+			<exclusions>
+				<exclusion>
+					<artifactId>log4j</artifactId>
+					<groupId>log4j</groupId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- Required for mocking during tests -->
+		<dependency>
+			<groupId>com.googlecode.jmockit</groupId>
+			<artifactId>jmockit</artifactId>
+			<version>${version.jmockit}</version>
+			<scope>test</scope>
+		</dependency>
+		<!-- Required for running next generation tests -->
+		<dependency>
+			<groupId>org.testng</groupId>
+			<artifactId>testng</artifactId>
+			<version>${version.testng}</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>${version.maven.compiler}</version>
+				<configuration>
+					<source>1.6</source>
+					<target>1.6</target>
+					<compilerArgument>-Xlint</compilerArgument>
+					<showWarnings>true</showWarnings>
+					<showDeprecation>true</showDeprecation>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<version>${version.maven.assembly}</version>
+				<configuration>
+					<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>
+					<archive>
+						<manifestEntries>
+							<GIT-Build>${buildNumber}</GIT-Build>
+							<Version>${project.version}</Version>
+						</manifestEntries>
+					</archive>
+				</configuration>
+				<executions>
+					<execution>
+						<id>make-assembly</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>${version.maven.surefire}</version>
+				<configuration>
+					<argLine>-javaagent:"${settings.localRepository}"/com/googlecode/jmockit/jmockit/${version.jmockit}/jmockit-${version.jmockit}.jar
+						-Xmx512m -XX:-UseSplitVerifier</argLine>
+					<forkMode>once</forkMode>
+					<properties>
+						<property>
+							<name>reporter</name>
+							<value>org.testng.reporters.XMLReporter</value>
+						</property>
+					</properties>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>findbugs-maven-plugin</artifactId>
+				<version>${version.findbugs}</version>
+				<configuration>
+					<failOnError>false</failOnError>
+					<findbugsXmlOutput>true</findbugsXmlOutput>
+					<findbugsXmlWithMessages>true</findbugsXmlWithMessages>
+					<excludeFilterFile>${basedir}/findbugs_exclude.xml</excludeFilterFile>
+					<xmlOutput>true</xmlOutput>
+				</configuration>
+				<executions>
+					<execution>
+						<phase>install</phase>
+						<goals>
+							<goal>findbugs</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-checkstyle-plugin</artifactId>
+				<version>${version.checkstyle}</version>
+				<configuration>
+					<configLocation>${basedir}/checkstyle_include.xml</configLocation>
+				</configuration>
+				<executions>
+					<execution>
+						<phase>install</phase>
+						<goals>
+							<goal>checkstyle</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
