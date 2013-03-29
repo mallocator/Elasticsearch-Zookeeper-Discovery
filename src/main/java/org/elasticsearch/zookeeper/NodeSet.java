@@ -1,10 +1,10 @@
 package org.elasticsearch.zookeeper;
 
+import java.io.UnsupportedEncodingException;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,43 +19,16 @@ import org.slf4j.LoggerFactory;
 /**
  * Stores a set of data in a set of ZooKeeper nodes for later retrieval. Data is only kept as long as the client that set the
  * value is connected.
- * 
- * @param <T> The data type that should be stored in the ZooKeeper Node
  */
-public class NodeSet<T> implements Watcher, Iterable<Entry<String, T>> {
-	private static final Logger	logger	= LoggerFactory.getLogger(NodeSet.class);
+public class NodeSet<T> implements Watcher, Iterable<Entry<String, String>> {
+	private static final Logger			logger	= LoggerFactory.getLogger(NodeSet.class);
+	private final ZooKeeper				zoo;
+	private final String				groupPath;
+	private final Map<String, String>	nodeMap	= new ConcurrentHashMap<String, String>();
 
-	/**
-	 * Interface used to deserialize the data that was stored in the ZooKeeper Node. Clients that want to retrieve data that
-	 * they stored need to implement this interface.
-	 * 
-	 * @param <T>
-	 */
-	public interface NodeContentDeserializer<T> {
-		/**
-		 * The method that deserializes the byte[] information from the ZooKeeper Node into whatever it was before.
-		 * 
-		 * @param data
-		 * @return
-		 */
-		T deserialize(byte[] data);
-	}
-
-	private final ZooKeeper						zoo;
-	private final String						groupPath;
-	private final Map<String, T>				nodeMap	= new ConcurrentHashMap<String, T>();
-	private final NodeContentDeserializer<T>	ser;
-	private final Random						rand;
-
-	public NodeSet(final ZKConnector zoo, final String groupPath, final NodeContentDeserializer<T> ser) {
-		this(zoo.getZk(), groupPath, ser);
-	}
-
-	public NodeSet(final ZooKeeper zk, final String groupPath, final NodeContentDeserializer<T> ser) {
-		this.zoo = zk;
+	public NodeSet(final ZKConnector zoo, final String groupPath) {
+		this.zoo = zoo.getZk();
 		this.groupPath = groupPath;
-		this.ser = ser;
-		this.rand = new Random();
 		try {
 			getNodesFromZoo();
 		} catch (Exception e) {
@@ -63,36 +36,9 @@ public class NodeSet<T> implements Watcher, Iterable<Entry<String, T>> {
 		}
 	}
 
-	private synchronized void getNodesFromZoo() throws KeeperException, InterruptedException {
-		try {
-			final Set<String> newState = new HashSet<String>(this.zoo.getChildren(this.groupPath, this));
-			final Set<String> toDelete = new HashSet<String>(this.nodeMap.keySet());
-			toDelete.removeAll(newState);
-
-			final Set<String> toAdd = new HashSet<String>(newState);
-			newState.removeAll(this.nodeMap.keySet());
-
-			for (String node : toDelete) {
-				remove(node);
-			}
-			for (String node : toAdd) {
-				add(node);
-			}
-		} catch (KeeperException.NoNodeException e) {
-			throw new RuntimeException("Group does not exist: " + this.groupPath, e);
-		}
-	}
-
-	private void add(final String node) throws KeeperException, InterruptedException {
-		final byte[] data = this.zoo.getData(this.groupPath + "/" + node, this, null);
-		final T meta = this.ser.deserialize(data);
-		this.nodeMap.put(node, meta);
-	}
-
-	private void remove(final String node) {
-		this.nodeMap.remove(node);
-	}
-
+	/**
+	 * React on an event fired by the ZooKeeper Cluster and update our known information.
+	 */
 	@Override
 	public void process(final WatchedEvent event) {
 		if (event.getType() == EventType.NodeChildrenChanged) {
@@ -117,37 +63,44 @@ public class NodeSet<T> implements Watcher, Iterable<Entry<String, T>> {
 		}
 	}
 
-	/**
-	 * Returns on random element of the data set held under this set of ZooKeeper nodes.
-	 * 
-	 * @return
-	 */
-	public T getRandomMeta() {
-		if (this.nodeMap.size() > 0) {
-			final int r = this.rand.nextInt(this.nodeMap.size());
-			int i = 0;
-			for (T meta : this.nodeMap.values()) {
-				if (i == r) {
-					return meta;
-				}
-				i++;
-			}
-		}
-		return null;
-	}
-
 	@Override
-	public Iterator<Entry<String, T>> iterator() {
+	public Iterator<Entry<String, String>> iterator() {
 		return this.nodeMap.entrySet().iterator();
 	}
 
 	/**
-	 * Returns the data of the node in this set of nodes with the given id.
+	 * Fetches data form ZooKeeper and checks what information needs to be updated.
 	 * 
-	 * @param nodeId
-	 * @return
+	 * @throws KeeperException
+	 * @throws InterruptedException
+	 * @throws UnsupportedEncodingException
 	 */
-	public T getByName(final String nodeId) {
-		return this.nodeMap.get(nodeId);
+	private synchronized void getNodesFromZoo() throws KeeperException, InterruptedException, UnsupportedEncodingException {
+		try {
+			final Set<String> newState = new HashSet<String>(this.zoo.getChildren(this.groupPath, this));
+			final Set<String> toDelete = new HashSet<String>(this.nodeMap.keySet());
+			toDelete.removeAll(newState);
+
+			final Set<String> toAdd = new HashSet<String>(newState);
+			newState.removeAll(this.nodeMap.keySet());
+
+			for (final String node : toDelete) {
+				remove(node);
+			}
+			for (final String node : toAdd) {
+				add(node);
+			}
+		} catch (KeeperException.NoNodeException e) {
+			throw new RuntimeException("Group does not exist: " + this.groupPath, e);
+		}
+	}
+
+	private void add(final String node) throws KeeperException, InterruptedException, UnsupportedEncodingException {
+		final byte[] data = this.zoo.getData(this.groupPath + "/" + node, this, null);
+		this.nodeMap.put(node, new String(data, "UTF-8"));
+	}
+
+	private void remove(final String node) {
+		this.nodeMap.remove(node);
 	}
 }

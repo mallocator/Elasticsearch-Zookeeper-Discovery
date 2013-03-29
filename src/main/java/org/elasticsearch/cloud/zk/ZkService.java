@@ -6,7 +6,6 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.SettingsFilter;
 import org.elasticsearch.zookeeper.NodeSet;
-import org.elasticsearch.zookeeper.NodeSet.NodeContentDeserializer;
 import org.elasticsearch.zookeeper.NodeSetMember;
 import org.elasticsearch.zookeeper.ZKConnector;
 
@@ -17,6 +16,7 @@ public class ZkService extends AbstractLifecycleComponent<ZkService> {
 	private final ZKConnector		zooConnector;
 	private final NodeSet<String>	nodes;
 	private final String			zkPath;
+	private String					nodeAddress;
 	private NodeSetMember			groupMember;
 
 	@Inject
@@ -37,21 +37,21 @@ public class ZkService extends AbstractLifecycleComponent<ZkService> {
 		}
 
 		this.zkPath = settings.get("cloud.zk.path", "/elasticsearch");
-		this.nodes = new NodeSet<String>(this.zooConnector, this.zkPath, new NodeContentDeserializer<String>() {
-			@Override
-			public String deserialize(final byte[] data) {
-				try {
-					return new String(data, "UTF-8");
-				} catch (Exception e) {
-					ZkService.this.logger.error("Unable to deserialize server from zookeeper");
-					return null;
-				}
-			}
-		});
+		this.nodes = new NodeSet<String>(this.zooConnector, this.zkPath);
+	}
+
+	public void setNodeAddress(final String myAddress) {
+		this.nodeAddress = myAddress;
+	}
+
+	public NodeSet<String> getNodes() {
+		return this.nodes;
 	}
 
 	@Override
-	protected void doStart() throws ElasticSearchException {}
+	protected void doStart() throws ElasticSearchException {
+		registerNode();
+	}
 
 	@Override
 	protected void doStop() throws ElasticSearchException {
@@ -63,43 +63,26 @@ public class ZkService extends AbstractLifecycleComponent<ZkService> {
 		unregisterNode();
 	}
 
-	public ZKConnector getZooConnector() {
-		return this.zooConnector;
-	}
-
-	public NodeSet<String> getNodes() {
-		return this.nodes;
-	}
-
 	/**
 	 * Registers a node at a specified ZooKeeper path, so that other nodes can find this node.
-	 * 
-	 * @param myAddress
 	 */
-	public void registerNode(final String myAddress) {
-		if (this.groupMember != null) {
-			this.logger.info("Already registered with ZooKeeper, skipping registration");
+	private void registerNode() {
+		if (this.nodeAddress == null) {
+			this.logger.warn("Can't register with ZooKeeper, as I don't know my own address yet");
 			return;
 		}
-		this.groupMember = new NodeSetMember();
-		this.groupMember.setZooConnector(this.zooConnector);
-		this.groupMember.setGroup(this.zkPath);
-		this.groupMember.setNodeName(getZKNodeName());
-		this.groupMember.setNodeValue(myAddress);
-		this.groupMember.setForceOverwriteExistingNode(true);
-		this.groupMember.setRenewNode(true);
-		this.groupMember.postConstruct();
-		this.logger.info("Registered with ZooKeeper under node {} with address {}", getZKNodeName(), myAddress);
+		if (this.groupMember != null) {
+			this.logger.warn("Already registered with ZooKeeper, skipping registration");
+			return;
+		}
+		this.groupMember = new NodeSetMember(this.zooConnector, this.zkPath, getZKNodeName(), this.nodeAddress);
+		this.groupMember.registerNode();
+		this.logger.info("Registered with ZooKeeper under node {} with address {}", getZKNodeName(), this.nodeAddress);
 	}
 
 	private void unregisterNode() {
 		if (this.groupMember != null) {
-			try {
-				this.zooConnector.getZk().delete(this.zkPath + "/" + getZKNodeName(), -1);
-				this.groupMember = null;
-			} catch (Exception e) {
-				this.logger.info("Unable to delete connection node from ZooKeeper");
-			}
+			this.groupMember.unregisterNode();
 		}
 	}
 

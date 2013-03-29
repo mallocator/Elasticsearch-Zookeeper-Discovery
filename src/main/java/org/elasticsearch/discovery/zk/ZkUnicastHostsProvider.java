@@ -32,7 +32,7 @@ public class ZkUnicastHostsProvider extends AbstractComponent implements Unicast
 	public List<DiscoveryNode> buildDynamicNodes() {
 		this.logger.info("Building list of dynamic discovery nodes from ZooKeeper");
 		final String myAddress = getMyAddress();
-		this.zkService.registerNode(myAddress);
+		this.zkService.setNodeAddress(myAddress);
 
 		final List<DiscoveryNode> discoNodes = Lists.newArrayList();
 		int clientCount = 0;
